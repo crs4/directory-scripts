@@ -8,17 +8,27 @@ import argparse
 import json
 import math
 import os
-import pprint
-from collections import defaultdict
-from molgenis.client import Session
 
 import pandas as pd
+from molgenis.client import Session
 
 BIOBANKS_MAPPING = {
-    '173631': 'bbmri-eric:ID:IT_1384375808568138:collection:794f03ad818541b',
-    '215190': 'bbmri-eric:ID:IT_1539241927435687:collection:c9346d1b70d14fc',
-    '45274': 'bbmri-eric:ID:IT_1383569594559774:collection:1444717432314364',
-    '77489': 'bbmri-eric:ID:IT_1383047508168267:collection:1444717360015607'
+    173631: {
+        'biobank': 'bbmri-eric:ID:IT_1384375808568138',
+        'collection': 'bbmri-eric:ID:IT_1384375808568138:collection:794f03ad818541b'
+    },
+    '215190': {
+        'biobank': 'bbmri-eric:ID:IT_1539241927435687',
+        'collection': 'bbmri-eric:ID:IT_1539241927435687:collection:c9346d1b70d14fc'
+    },
+    '45274': {
+        'biobank': 'bbmri-eric:ID:IT_1383569594559774',
+        'collection': 'bbmri-eric:ID:IT_1383569594559774:collection:1444717432314364'
+    },
+    '77489': {
+        'biobank': 'bbmri-eric:ID:IT_1383047508168267',
+        'collection': 'bbmri-eric:ID:IT_1383047508168267:collection:1444717360015607'
+    }
 }
 
 COUNTRIES_CODES = {
@@ -62,8 +72,9 @@ ALSO_KNOWN_SHEET = 'eu_bbmri_eric_also_known_in'
 
 class RDConnectImporter:
 
-    def __init__(self, input_data, sc_url, sc_user, sc_pass):
-        self.input_data = input_data
+    def __init__(self, bb_dir_data, rdc_finder_data, sc_url, sc_user, sc_pass):
+        self.eric_data = bb_dir_data
+        self.rdc_finder_data = rdc_finder_data
         self.sc_url = sc_url
         self.sc_user = sc_user
         self.sc_pass = sc_pass
@@ -73,11 +84,20 @@ class RDConnectImporter:
     def get_country_code(self, rd_connect_country):
         return COUNTRIES_CODES[rd_connect_country]
 
-    def generate_biobank_id(self, rd_biobank_id, biobank_country):
-        return f'bbmri-eric:ID:RD_{biobank_country}:{rd_biobank_id}'
+    def biobank_exist(self, rd_biobank_id):
+        return rd_biobank_id in BIOBANKS_MAPPING
 
-    def generate_collection_id(self, biobank_id):
-        return f'{biobank_id}:collection:MainCollection'
+    def get_biobank_id(self, rd_biobank_id, biobank_country):
+        try:
+            return BIOBANKS_MAPPING[rd_biobank_id]['biobank']
+        except KeyError:
+            return f'bbmri-eric:ID:RD_{biobank_country}:{rd_biobank_id}'
+
+    def get_collection_id(self, rd_biobank_id, biobank_country):
+        try:
+            return BIOBANKS_MAPPING[rd_biobank_id]['collection']
+        except KeyError:
+            return f'{self.get_biobank_id(rd_biobank_id, biobank_country)}:collection:MainCollection'
 
     def generate_contact_id(self, rd_biobank_id, biobank_country):
         return f'bbmri-eric:contactID:RD_{biobank_country}_{rd_biobank_id}'
@@ -123,93 +143,90 @@ class RDConnectImporter:
 
     def get_organization_info(self, rd_data):
         country_code = self.get_country_code(rd_data['address']['country'])
-        biobank_id = self.generate_biobank_id(rd_data['OrganizationID'], country_code)
-        return {
-            'id': biobank_id,
-            'pid': biobank_id,
-            'name': rd_data['name'],
-            'acronym': rd_data['bb_core']['acronym'],
-            'description': rd_data['bb_core']['Description'],
-            'url': rd_data['url'][0],
-            'location': '',
-            'country': country_code,
-            'head': '',
-            'contact': self.generate_contact_id(biobank_id, country_code),
-            'juridical_person': rd_data['address']['name of host institution'],
-            'network': RD_NETWORK,
-            'also_known': '',
-            'collections': f'{biobank_id}:collection:MainCollection',
-            'capabilities': '',
-            'quality': '',
-            'collaboration_commercial': '',
-            'collaboration_non_for_profit': '',
-            'national_node': country_code,
-            'withdrawn': True
-        }
+        biobank_id = self.get_biobank_id(rd_data['OrganizationID'], country_code)
+        df = self.eric_data[BIOBANKS_SHEET]
+        if df[df.id == biobank_id].empty:
+            new_biobank = pd.DataFrame({
+                'id': [biobank_id],
+                'pid': [biobank_id],
+                'name': [rd_data['name']],
+                'acronym': [rd_data['bb_core']['acronym']],
+                'description': [rd_data['bb_core']['Description']],
+                'url': [rd_data['url'][0]],
+                'location': [''],
+                'country': [country_code],
+                'head': [''],
+                'contact': [self.generate_contact_id(biobank_id, country_code)],
+                'juridical_person': [rd_data['address']['name of host institution']],
+                'network': [RD_NETWORK],
+                'also_known': [''],
+                'collections': [f'{biobank_id}:collection:MainCollection'],
+                'capabilities': [''],
+                'quality': [''],
+                'collaboration_commercial': [''],
+                'collaboration_non_for_profit': [''],
+                'national_node': [country_code],
+                'withdrawn': [True]
+            }, index=None)
+            self.eric_data[BIOBANKS_SHEET] = pd.concat([self.eric_data[BIOBANKS_SHEET], new_biobank])
+        else:
+            df.at[df.id == biobank_id, 'network'] = [f"{df.loc[df.id == biobank_id]['network'].values[0]},{RD_NETWORK}"]
+
+    def _concat_cell(self, current_cell, new_string):
+        if str(current_cell.values[0]) == 'nan':
+            return new_string
+        else:
+            return f'{current_cell.values[0]},{new_string}'
 
     def get_collection_info(self, rd_data):
         country_code = self.get_country_code(rd_data['address']['country'])
         rd_biobank_id = rd_data['OrganizationID']
-        biobank_id = self.generate_biobank_id(rd_biobank_id, country_code)
+        collection_id = self.get_collection_id(rd_biobank_id, country_code)
+
         additional = [am.strip() for am in rd_data['bb_core']['Additional_Biomaterial_available'].split(',') if
                       am != '']
         materials = [self.get_material(m) for m in json.loads(rd_data['bb_core']['Biomaterial_Available']) + additional
-                     if
-                     self.get_material(m) is not None]
+                     if self.get_material(m) is not None]
+
         num_of_donors, diseases = self.get_donors_and_diseases(rd_data)
-        return {
-            'id': self.generate_collection_id(biobank_id),
-            'name': 'Main Collection',
-            'acronym': '',
-            'description': '',
-            'url': '',
-            'location': '',
-            'country': country_code,
-            'head': '',
-            'contact': self.generate_contact_id(rd_biobank_id, country_code),
-            'withdrawn': '',
-            'national_node': '',  # TODO
-            'parent_collection': '',
-            'sub_collections': '',
-            'biobank': biobank_id,
-            'biobank_label': rd_data['name'],
-            'network': RD_NETWORK,
-            'combined_network': RD_NETWORK,
-            'also_known': f'rdconnect:{rd_biobank_id}',
-            'type': 'RD',  # statically add only rare disease type
-            'data_categories': 'BIOLOGICAL_SAMPLES,OTHER',
-            'order_of_magnitude': '0',  # TODO: check if it can be retrieved in the samples catalogue
-            'size': '',  # TODO: check if it can be retrieved in the samples catalogue
-            'categories': '',
-            'timestamp': '',
-            'quality': '',
-            'combined_quality': '',
-            'number_of_donors': num_of_donors,
-            'order_of_magnitude_donors': int(math.log10(max(1, num_of_donors))),
-            'sex': '',  # TODO: check if it can be retrieved in the samples catalogue
-            'diagnosis_available': ','.join(sorted(diseases)),
-            'age_low': '',
-            'age_high': '',
-            'age_unit': '',
-            'materials': ','.join(sorted(materials)),
-            'storage_temperatures': '',
-            'body_part_examined': '',
-            'imaging_modality': '',
-            'image_dataset_type': '',
-            'collaboration_commercial': '',
-            'collaboration_non_for_profit': '',
-            'data_use': '',
-            'commercial_use': '',
-            'access_fee': '',
-            'access_joint_project': '',
-            'access_description': '',
-            'access_uri': '',
-            'sop': ''
-        }
+
+        df = self.eric_data[COLLECTIONS_SHEET]
+        if df[df.id == collection_id].empty:
+            new_collection = pd.DataFrame({
+                'id': [self.get_collection_id(collection_id, country_code)],
+                'name': ['Main Collection'], 'acronym': [''], 'description': [''], 'url': [''], 'location': [''],
+                'country': [country_code], 'head': [''],
+                'contact': [self.generate_contact_id(rd_biobank_id, country_code)],
+                'withdrawn': [''], 'national_node': [''],  # TODO
+                'parent_collection': [''], 'sub_collections': [''],
+                'biobank': [collection_id], 'biobank_label': [rd_data['name']], 'network': [RD_NETWORK],
+                'combined_network': [RD_NETWORK], 'also_known': [f'rdconnect:{rd_biobank_id}'],
+                'type': ['RD'],  # statically add only rare disease type
+                'data_categories': ['BIOLOGICAL_SAMPLES,OTHER'],
+                'order_of_magnitude': ['0'],  # TODO: check if it can be retrieved in the samples catalogu]e
+                'size': [''],  # TODO: check if it can be retrieved in the samples catalogue
+                'categories': [''], 'timestamp': [''], 'quality': [''], 'combined_quality': [''],
+                'number_of_donors': [num_of_donors],
+                'order_of_magnitude_donors': [int(math.log10(max(1, num_of_donors)))],
+                'sex': [''],  # TODO: check if it can be retrieved in the samples catalogue
+                'diagnosis_available': [','.join(sorted(diseases))], 'age_low': [''],
+                'age_high': [''], 'age_unit': [''], 'materials': [','.join(sorted(materials))],
+                'storage_temperatures': [''], 'body_part_examined': [''], 'imaging_modality': [''],
+                'image_dataset_type': [''], 'collaboration_commercial': [''], 'collaboration_non_for_profit': [''],
+                'data_use': [''], 'commercial_use': [''], 'access_fee': [''], 'access_joint_project': [''],
+                'access_description': [''], 'access_uri': [''], 'sop': ['']
+            })
+            self.eric_data[COLLECTIONS_SHEET] = pd.concat([df, new_collection])
+        else:
+            df.at[df.id == collection_id, ['also_known', 'network', 'combined_network', 'diagnosis_available']] = \
+                [self._concat_cell(df.loc[df.id == collection_id, 'also_known'], f'rdconnect:{rd_biobank_id}'),
+                 self._concat_cell(df.loc[df.id == collection_id, 'network'], RD_NETWORK),
+                 self._concat_cell(df.loc[df.id == collection_id, 'combined_network'], RD_NETWORK),
+                 self._concat_cell(df.loc[df.id == collection_id, 'diagnosis_available'], ','.join(sorted(diseases)))]
 
     def get_contact_info(self, rd_data):
         country_code = self.get_country_code(rd_data['address']['country'])
-        biobank_id = self.generate_biobank_id(rd_data['OrganizationID'], country_code)
+        biobank_id = self.get_biobank_id(rd_data['OrganizationID'], country_code)
         return {
             'id': self.generate_contact_id(rd_data['OrganizationID'], country_code),
             'title_before_name': '',
@@ -224,7 +241,7 @@ class RDConnectImporter:
             'country': country_code,
             'role': '',
             'biobanks': biobank_id,
-            'collections': self.generate_collection_id(biobank_id),
+            'collections': self.get_collection_id(biobank_id),
             'networks': '',
             'national_node': country_code,
             'withdrawn': True
@@ -242,26 +259,24 @@ class RDConnectImporter:
         }
 
     def run(self):
-        eric_data = defaultdict(list)
-        for b in self.input_data:
+        # eric_data = defaultdict(list)
+        for b in self.rdc_finder_data:
             print("Converting biobank: ", b['OrganizationID'])
             print("Getting biobank data: ", b['OrganizationID'])
-            eric_data[BIOBANKS_SHEET].append(self.get_organization_info(b))
+            self.get_organization_info(b)
             print("Getting collection data: ", b['OrganizationID'])
-            eric_data[COLLECTIONS_SHEET].append(self.get_collection_info(b))
-            print("Getting person data: ", b['OrganizationID'])
-            eric_data[PERSONS_SHEET].append(self.get_contact_info(b))
-            print("Getting also known data: ", b['OrganizationID'])
-            eric_data[ALSO_KNOWN_SHEET].append(self.get_also_known_in_info(b))
+            self.get_collection_info(b)
+            # print("Getting person data: ", b['OrganizationID'])
+            # self.get_contact_info(b)
+            # print("Getting also known data: ", b['OrganizationID'])
+            # self.get_also_known_in_info(b)
             print()
-        return eric_data
+        return self.eric_data
 
 
 def write_excel(data, output_file):
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
-        for sheet, data in data.items():
-            cols = list(data[0].keys())
-            df = pd.DataFrame([record.values() for record in data], columns=cols)
+        for sheet, df in data.items():
             df.to_excel(writer, sheet_name=sheet, index=False)
 
 
@@ -292,8 +307,10 @@ if __name__ == "__main__":
     with open(args.rd_connect_file) as f:
         rd_connect_data = json.load(f)
 
-    biobanks = [b for b in rd_connect_data['allData'] if b['type'] in 'biobank']
+    rdc_biobanks = [b for b in rd_connect_data['allData'] if
+                    b['type'] in 'biobank' and b['OrganizationID'] in (44001, 173631)]
+    d_emx = pd.read_excel(args.directory_file, sheet_name=None, engine='openpyxl')
 
-    importer = RDConnectImporter(biobanks, args.sc_url, args.sc_user, args.sc_pwd)
+    importer = RDConnectImporter(d_emx, rdc_biobanks, args.sc_url, args.sc_user, args.sc_pwd)
     res = importer.run()
     write_excel(res, args.output_file)
