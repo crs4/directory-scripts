@@ -84,6 +84,7 @@ BIOBANKS_SHEET = 'eu_bbmri_eric_biobanks'
 COLLECTIONS_SHEET = 'eu_bbmri_eric_collections'
 PERSONS_SHEET = 'eu_bbmri_eric_persons'
 ALSO_KNOWN_SHEET = 'eu_bbmri_eric_also_known_in'
+DISEASES_SHEET = 'eu_bbmri_eric_disease_types'
 
 
 class RDConnectImporter:
@@ -96,6 +97,7 @@ class RDConnectImporter:
         self.sc_pass = sc_pass
         self.sc_session = Session(self.sc_url)
         self.sc_session.login(self.sc_user, self.sc_pass)
+        self.missing_diseases = []
 
     def get_country_code(self, rd_biobank_id, rd_connect_country):
         if rd_biobank_id == 168562:
@@ -147,7 +149,7 @@ class RDConnectImporter:
             diseases.update(d['icd10'])
             num_donors += int(d['number'])
 
-        diseases.update(self.get_diseases_from_sample_catalogue(rd_data['OrganizationID']))
+        # diseases.update(self.get_diseases_from_sample_catalogue(rd_data['OrganizationID']))
         return num_donors, diseases
 
     def get_diseases_from_sample_catalogue(self, rd_biobank_id):
@@ -211,6 +213,8 @@ class RDConnectImporter:
         set(self.get_material(m) for m in materials if self.get_material(m) is not None)
 
         num_of_donors, diseases = self.get_donors_and_diseases(rd_data)
+
+        self.add_diseases(diseases)
 
         df = self.eric_data[COLLECTIONS_SHEET]
         if df[df.id == collection_id].empty:
@@ -292,6 +296,12 @@ class RDConnectImporter:
         })
         self.eric_data[ALSO_KNOWN_SHEET] = pd.concat([df, new_also_known])
 
+    def add_diseases(self, diseases):
+        df = self.eric_data[DISEASES_SHEET]
+        for d in diseases:
+            if df[df.id == d].empty:
+                self.missing_diseases.append(d)
+
     def run(self):
         # eric_data = defaultdict(list)
         for b in self.rdc_finder_data:
@@ -305,6 +315,7 @@ class RDConnectImporter:
             print("Getting also known data: ", b['OrganizationID'])
             self.add_also_known_in_info(b)
             print()
+        print(sorted(set(self.missing_diseases)))
         return self.eric_data
 
 

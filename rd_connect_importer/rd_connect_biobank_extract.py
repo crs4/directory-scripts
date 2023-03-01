@@ -9,35 +9,57 @@ import os
 
 
 def clean_orphacodes(code):
-    if ',' in code:
-        return [clean_orphacodes(c)[0] for c in code.split(',')]
+    code = code.strip().replace('  ', ',').replace('ORPHA ', 'ORPHA')
+    if code in ('sdfsdfs', 'ORPHA', '-'):
+        return []
+    elif code == 'Beta thalassaemia':
+        return ['ORPHA:848']
+    elif code == 'FGFR2':
+        return ['ORPHA:87']
+    elif ',' in code:
+        return [clean_orphacodes(c)[0] for c in code.split(',') if c != '']
+    elif ';' in code:
+        return [clean_orphacodes(c)[0] for c in code.split(';') if c != '']
     elif 'ORPHA' in code:
-        return [code.strip().replace('ORPHA', 'ORPHA:')]
+        return [code.replace('ORPHA', 'ORPHA:')]
     elif code not in ('', '*'):
-        return [f'ORPHA:{code.strip()}']
+        return [f'ORPHA:{code}']
     else:
         return []
 
 
 def clean_icd10(code):
-    if ',' in code:
+    code = code.replace('*', '').replace(' ', '').strip()
+    # Some strange cases are handled singularly
+    if code == 'sdf':
+        return []
+    elif code == "G.71.3":
+        return ["urn:miriam:icd:G71.3"]
+    elif code == "Q.99.8":
+        return ["urn:miriam:icd:Q99.8"]
+    elif code == "G30-G32":
+        return ["urn:miriam:icd:G30-G32"]
+    elif code == "E71.310-11-12":
+        return ['urn:miriam:icd10cm:E71.310', 'urn:miriam:icd10cm:E71.311', 'urn:miriam:icd10cm:E71.312']
+    elif code in ('G12.0 G12.1 G12.1', 'G12.0 G12.1', 'G12.0G12.1G12.1'):
+        return ['urn:miriam:icd:G12.0', 'urn:miriam:icd:G12.1']
+    elif ',' in code:
         return [clean_icd10(c)[0] for c in code.split(',')]
     elif ';' in code:
         return [clean_icd10(c)[0] for c in code.split(';')]
-    elif code.strip() != '':
+    elif code != '':
         if len(code) > 5:
             # it's icd 10 cm
-            return [f'urn:miriam:icd10cm:{code.strip()}']
+            return [f'urn:miriam:icd10cm:{code}']
         else:
-            return [f'urn:miriam:icd:{code.strip()}']
+            return [f'urn:miriam:icd:{code}']
     else:
         return []
 
 
 def clean_omim(code):
-    code = code.replace('\n', ',')
+    code = code.replace('\n', ',').strip()
     if ',' in code:
-        print(code.strip())
         return[clean_omim(c)[0] for c in code.split(',') if c != '']
     elif code.strip() != '':
         return [f'OMIM:{code.strip()}']
@@ -45,10 +67,13 @@ def clean_omim(code):
 
 
 def clean_gene(code):
-    if ',' in code:
+    code = code.strip()
+    if code == 'dfsdf':
+        return []
+    elif ',' in code:
         return [clean_gene(c)[0] for c in code.split(',')]
-    elif code.strip() != '':
-        return [code.strip()]
+    elif code != '':
+        return [code]
     return []
 
 
