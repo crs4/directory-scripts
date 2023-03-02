@@ -6,26 +6,32 @@ It gets metadata from the biobanks and clean some data
 import argparse
 import json
 import os
+import re
 
 
 def clean_orphacodes(code):
-    code = code.strip().replace('  ', ',').replace('ORPHA ', 'ORPHA')
-    if code in ('sdfsdfs', 'ORPHA', '-'):
+    code = code.strip().replace('ORPHA ', 'ORPHA')
+    if code in ('sdfsdfs', 'ORPHA', '-'):  # handles dirty data in input
         return []
-    elif code == 'Beta thalassaemia':
+    if code == 'Beta thalassaemia':  # error in data in input
         return ['ORPHA:848']
-    elif code == 'FGFR2':
+    if code == 'FGFR2':  # Error in data in input
         return ['ORPHA:87']
-    elif ',' in code:
+    m = re.search("([A-Z]{2}: ORPHA)[0-9]+", code)  # handles dirty input with a two letters prefix
+    if m:
+        code = code.replace(m.groups()[0], 'ORPHA')
+    if re.match('ORPHA[0-9]+( {2})ORPHA[0-9]+', code):  # handles dirty input with orphacodes separated by two spaces
+        code = code.replace('  ', ',')
+    if ',' in code:
         return [clean_orphacodes(c)[0] for c in code.split(',') if c != '']
-    elif ';' in code:
+    if ';' in code:
         return [clean_orphacodes(c)[0] for c in code.split(';') if c != '']
-    elif 'ORPHA' in code:
+    if 'ORPHA' in code:
         return [code.replace('ORPHA', 'ORPHA:')]
-    elif code not in ('', '*'):
+    if code not in ('', '*'):
         return [f'ORPHA:{code}']
-    else:
-        return []
+
+    return []
 
 
 def clean_icd10(code):
@@ -33,34 +39,35 @@ def clean_icd10(code):
     # Some strange cases are handled singularly
     if code == 'sdf':
         return []
-    elif code == "G.71.3":
-        return ["urn:miriam:icd:G71.3"]
-    elif code == "Q.99.8":
-        return ["urn:miriam:icd:Q99.8"]
-    elif code == "G30-G32":
+    if re.match('([A-Z]\.)[0-9]{2}\.[0-9]', code):
+        code = code.replace('.', '', 1)
+    m = re.match('.*([A-Z][0-9]{2},[0-9])', code)
+    if m:
+        # handles dirty codes with commas instead of points (Q78,4)
+        code = code.replace(m.groups()[0], m.groups()[0].replace(',', '.'))
+    if code == "G30-G32":
         return ["urn:miriam:icd:G30-G32"]
-    elif code == "E71.310-11-12":
+    if code == "E71.310-11-12":
         return ['urn:miriam:icd10cm:E71.310', 'urn:miriam:icd10cm:E71.311', 'urn:miriam:icd10cm:E71.312']
-    elif code in ('G12.0 G12.1 G12.1', 'G12.0 G12.1', 'G12.0G12.1G12.1'):
+    if code in ('G12.0 G12.1 G12.1', 'G12.0 G12.1', 'G12.0G12.1G12.1'):
         return ['urn:miriam:icd:G12.0', 'urn:miriam:icd:G12.1']
-    elif ',' in code:
+    if ',' in code:
         return [clean_icd10(c)[0] for c in code.split(',')]
-    elif ';' in code:
+    if ';' in code:
         return [clean_icd10(c)[0] for c in code.split(';')]
-    elif code != '':
+    if code != '':
         if len(code) > 5:
             # it's icd 10 cm
             return [f'urn:miriam:icd10cm:{code}']
         else:
             return [f'urn:miriam:icd:{code}']
-    else:
-        return []
+    return []
 
 
 def clean_omim(code):
     code = code.replace('\n', ',').strip()
     if ',' in code:
-        return[clean_omim(c)[0] for c in code.split(',') if c != '']
+        return [clean_omim(c)[0] for c in code.split(',') if c != '']
     elif code.strip() != '':
         return [f'OMIM:{code.strip()}']
     return []
