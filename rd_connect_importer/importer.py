@@ -36,6 +36,7 @@ BIOBANKS_MAPPING = {
 }
 
 COUNTRIES_CODES = {
+    'Belgium': 'BE',
     'Germany': 'DE',
     'Hungary': 'HU',
     'Israel': 'IL',
@@ -146,10 +147,10 @@ class RDConnectImporter:
         diseases = set()
         for d in rd_data['diseases']:
             diseases.update(d['orphacode'])
-            diseases.update(d['icd10'])
+            diseases.update(icd for icd in d['icd10'] if 'icd10cm' not in icd)
             num_donors += int(d['number'])
 
-        # diseases.update(self.get_diseases_from_sample_catalogue(rd_data['OrganizationID']))
+        diseases.update(self.get_diseases_from_sample_catalogue(rd_data['OrganizationID']))
         return num_donors, diseases
 
     def get_diseases_from_sample_catalogue(self, rd_biobank_id):
@@ -210,11 +211,11 @@ class RDConnectImporter:
         biobank_id = self.get_biobank_id(rd_biobank_id, country_code)
         collection_id = self.get_collection_id(rd_biobank_id, country_code)
         materials = rd_data['bb_core']['Biomaterial_Available'] + rd_data['bb_core']['Additional_Biomaterial_available']
-        set(self.get_material(m) for m in materials if self.get_material(m) is not None)
+        materials = set(self.get_material(m) for m in materials if self.get_material(m) is not None)
 
         num_of_donors, diseases = self.get_donors_and_diseases(rd_data)
 
-        self.add_diseases(diseases)
+        self.check_missing_diseases(diseases)
 
         df = self.eric_data[COLLECTIONS_SHEET]
         if df[df.id == collection_id].empty:
@@ -296,14 +297,13 @@ class RDConnectImporter:
         })
         self.eric_data[ALSO_KNOWN_SHEET] = pd.concat([df, new_also_known])
 
-    def add_diseases(self, diseases):
+    def check_missing_diseases(self, diseases):
         df = self.eric_data[DISEASES_SHEET]
         for d in diseases:
             if df[df.id == d].empty:
                 self.missing_diseases.append(d)
 
     def run(self):
-        # eric_data = defaultdict(list)
         for b in self.rdc_finder_data:
             print("Converting biobank: ", b['OrganizationID'])
             print("Getting biobank data: ", b['OrganizationID'])
