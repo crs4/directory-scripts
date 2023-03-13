@@ -251,8 +251,8 @@ class RDConnectImporter:
                 'quality': [''],
                 'collaboration_commercial': [''],
                 'collaboration_non_for_profit': [''],
-                'national_node': [self.get_national_nodes_codes(rd_biobank_id, rd_connect_country)],
-                'withdrawn': [True]
+                'national_node': [''],
+                'withdrawn': ['']
             }, index=None)
             self.eric_data[BIOBANKS_SHEET] = pd.concat([biobanks_df, new_biobank])
         else:
@@ -310,7 +310,7 @@ class RDConnectImporter:
                 'name': [name], 'acronym': [acronym], 'description': [description], 'url': [''], 'location': [''],
                 'country': [country_code], 'head': [''],
                 'contact': [contact_id],
-                'withdrawn': [''], 'national_node': [self.get_national_nodes_codes(rd_biobank_id, rd_connect_country)],
+                'withdrawn': [''], 'national_node': [''],
                 'parent_collection': [''], 'sub_collections': [''],
                 'biobank': [biobank_id], 'biobank_label': [biobank_label], 'network': [RD_NETWORK],
                 'combined_network': [combined_network], 'also_known': [f'rdconnect:{rd_biobank_id}'],
@@ -368,8 +368,8 @@ class RDConnectImporter:
                 'biobanks': [biobank_id],
                 'collections': [collection_id],
                 'networks': [''],
-                'national_node': [self.get_national_nodes_codes(rd_biobank_id, rd_connect_country)],
-                'withdrawn': [True]
+                'national_node': [''],
+                'withdrawn': ['']
             })
             self.eric_data[PERSONS_SHEET] = pd.concat([df, new_contact])
 
