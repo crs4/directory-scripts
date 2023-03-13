@@ -238,21 +238,21 @@ class RDConnectImporter:
                 'description': [BeautifulSoup(self.get_field_value(rd_biobank_id, rd_data['bb_core'], 'Description'),
                                               'html.parser').get_text()],
                 'url': [self.get_field_value(rd_biobank_id, rd_data, 'url')[0]],
-                'location': [''],
+                'location': [None],
                 'country': [country_code],
-                'head': [''],
+                'head': [None],
                 'contact': [self.generate_contact_id(rd_biobank_id, country_code)],
                 'juridical_person': [
                     self.get_field_value(rd_biobank_id, rd_data['address'], 'name of host institution')],
                 'network': [RD_NETWORK],
-                'also_known': [''],
+                'also_known': [None],
                 'collections': [self.get_collection_id(rd_biobank_id, country_code)],
-                'capabilities': [''],
-                'quality': [''],
-                'collaboration_commercial': [''],
-                'collaboration_non_for_profit': [''],
-                'national_node': [''],
-                'withdrawn': ['']
+                'capabilities': [None],
+                'quality': [None],
+                'collaboration_commercial': [None],
+                'collaboration_non_for_profit': [None],
+                'national_node': [None],
+                'withdrawn': [None]
             }, index=None)
             self.eric_data[BIOBANKS_SHEET] = pd.concat([biobanks_df, new_biobank])
         else:
@@ -307,27 +307,27 @@ class RDConnectImporter:
 
             new_collection = pd.DataFrame({
                 'id': [collection_id],
-                'name': [name], 'acronym': [acronym], 'description': [description], 'url': [''], 'location': [''],
-                'country': [country_code], 'head': [''],
+                'name': [name], 'acronym': [acronym], 'description': [description], 'url': [None], 'location': [None],
+                'country': [country_code], 'head': [None],
                 'contact': [contact_id],
-                'withdrawn': [''], 'national_node': [''],
-                'parent_collection': [''], 'sub_collections': [''],
+                'withdrawn': [None], 'national_node': [None],
+                'parent_collection': [None], 'sub_collections': [None],
                 'biobank': [biobank_id], 'biobank_label': [biobank_label], 'network': [RD_NETWORK],
                 'combined_network': [combined_network], 'also_known': [f'rdconnect:{rd_biobank_id}'],
                 'type': ['RD'],  # statically add only rare disease type
                 'data_categories': ['BIOLOGICAL_SAMPLES,OTHER'],
                 'order_of_magnitude': ['0'],  # TODO: check if it can be retrieved in the samples catalogu]e
-                'size': [''],  # TODO: check if it can be retrieved in the samples catalogue
-                'categories': [''], 'timestamp': [''], 'quality': [''], 'combined_quality': [''],
+                'size': [None],  # TODO: check if it can be retrieved in the samples catalogue
+                'categories': [None], 'timestamp': [None], 'quality': [None], 'combined_quality': [None],
                 'number_of_donors': [num_of_donors],
                 'order_of_magnitude_donors': [int(math.log10(max(1, num_of_donors)))],
-                'sex': [''],  # TODO: check if it can be retrieved in the samples catalogue
-                'diagnosis_available': [','.join(sorted(diseases))], 'age_low': [''],
-                'age_high': [''], 'age_unit': [''], 'materials': [','.join(sorted(materials))],
-                'storage_temperatures': [''], 'body_part_examined': [''], 'imaging_modality': [''],
-                'image_dataset_type': [''], 'collaboration_commercial': [''], 'collaboration_non_for_profit': [''],
-                'data_use': [''], 'commercial_use': [''], 'access_fee': [''], 'access_joint_project': [''],
-                'access_description': [''], 'access_uri': [''], 'sop': ['']
+                'sex': [None],  # TODO: check if it can be retrieved in the samples catalogue
+                'diagnosis_available': [','.join(sorted(diseases))], 'age_low': [None],
+                'age_high': [None], 'age_unit': [None], 'materials': [','.join(sorted(materials))],
+                'storage_temperatures': [None], 'body_part_examined': [None], 'imaging_modality': [None],
+                'image_dataset_type': [None], 'collaboration_commercial': [None], 'collaboration_non_for_profit': [None],
+                'data_use': [None], 'commercial_use': [None], 'access_fee': [None], 'access_joint_project': [None],
+                'access_description': [None], 'access_uri': [None], 'sop': [None]
             })
             self.eric_data[COLLECTIONS_SHEET] = pd.concat([collections_df, new_collection])
         else:
@@ -354,22 +354,22 @@ class RDConnectImporter:
             collection_id = self.get_collection_id(rd_biobank_id, country_code)
             new_contact = pd.DataFrame({
                 'id': [self.generate_contact_id(rd_biobank_id, country_code)],
-                'title_before_name': [''],
+                'title_before_name': [None],
                 'first_name': [rd_data['main contact']['first name']],
                 'last_name': [rd_data['main contact']['last name']],
-                'title_after_name': [''],
+                'title_after_name': [None],
                 'email': [rd_data['main contact']['email']],
-                'phone': [''],
-                'address': [''],
-                'zip': [''],
-                'city': [''],
+                'phone': [None],
+                'address': [None],
+                'zip': [None],
+                'city': [None],
                 'country': [country_code],
-                'role': [''],
+                'role': [None],
                 'biobanks': [biobank_id],
                 'collections': [collection_id],
-                'networks': [''],
-                'national_node': [''],
-                'withdrawn': ['']
+                'networks': [None],
+                'national_node': [None],
+                'withdrawn': [None]
             })
             self.eric_data[PERSONS_SHEET] = pd.concat([df, new_contact])
 
@@ -382,9 +382,9 @@ class RDConnectImporter:
             'id': [also_known_id],
             'name_system': ['RD Connect'],
             'pid': [rd_biobank_id],
-            'url': [''],
+            'url': [None],
             'national_node': [self.get_national_nodes_codes(rd_biobank_id, rd_data['address']['country'])],
-            'withdrawn': ['']
+            'withdrawn': [None]
         })
         self.eric_data[ALSO_KNOWN_SHEET] = pd.concat([df, new_also_known])
 
