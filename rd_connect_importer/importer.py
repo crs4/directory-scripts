@@ -130,11 +130,12 @@ COLLECTIONS_SHEET = 'eu_bbmri_eric_collections'
 PERSONS_SHEET = 'eu_bbmri_eric_persons'
 ALSO_KNOWN_SHEET = 'eu_bbmri_eric_also_known_in'
 DISEASES_SHEET = 'eu_bbmri_eric_disease_types'
+COUNTRIES_SHEET = 'eu_bbmri_eric_countries'
 
 
 class RDConnectImporter:
 
-    def __init__(self, bb_dir_data, rdc_finder_data, diseases_data, sc_url, sc_user, sc_pass):
+    def __init__(self, bb_dir_data, rdc_finder_data, diseases_data, countries_data, sc_url, sc_user, sc_pass):
         self.eric_data = bb_dir_data
         self.rdc_finder_data = rdc_finder_data
         self.sc_url = sc_url
@@ -143,7 +144,9 @@ class RDConnectImporter:
         self.sc_session = Session(self.sc_url)
         self.sc_session.login(self.sc_user, self.sc_pass)
         self.diseases_data = diseases_data
+        self.countries_data = countries_data
         self.missing_diseases = []
+        self.missing_countries = []
 
     def _concat_cell(self, current_cell, new_string):
         if str(current_cell.values[0]) == 'nan':
@@ -269,6 +272,7 @@ class RDConnectImporter:
         rd_connect_country = rd_data['address']['country']
 
         country_code = self.get_country_code(rd_biobank_id, rd_connect_country)
+        self.check_missing_country(country_code)
         biobank_id = self.get_biobank_id(rd_biobank_id, country_code)
         collection_id = self.get_collection_id(rd_biobank_id, country_code)
 
@@ -398,11 +402,19 @@ class RDConnectImporter:
         for d in diseases:
             if self.eric_data[DISEASES_SHEET][self.eric_data[DISEASES_SHEET].id == d].empty:
                 if disease_df is not None and not disease_df[disease_df.id == d].empty:
-                    print(f'Adding disease {d} to excel file')
                     self.eric_data[DISEASES_SHEET] = pd.concat([self.eric_data[DISEASES_SHEET], disease_df[disease_df.id == d]])
                 else:
-                    print(f'Cannot find disease {d} in the missing disease file')
                     self.missing_diseases.append(d)
+
+    def check_missing_country(self, country):
+        country_df = self.countries_data
+        if self.eric_data[COUNTRIES_SHEET][self.eric_data[COUNTRIES_SHEET].id == country].empty:
+            if country_df is not None and not country_df[country_df.id == country].empty:
+                print(f'Adding country {country} to excel file')
+                self.eric_data[COUNTRIES_SHEET] = pd.concat([self.eric_data[COUNTRIES_SHEET], country_df[country_df.id == country]])
+            else:
+                print(f'Cannot find country {country} in the missing country file')
+                self.missing_countries.append(country)
 
 
 
@@ -444,6 +456,8 @@ if __name__ == "__main__":
                         help='The JSON input file with data of RD Connect\'s biobanks')
     parser.add_argument('--missing-disease-file', '-d', dest='missing_disease_file', required=False,
                         help='A csv file that contains the missing disease information')
+    parser.add_argument('--missing-countries-file', '-c', dest='missing_countries_file', required=False,
+                        help='A csv file that contains the missing countries information')
     parser.add_argument('--output', '-o', dest='output_file', type=str, required=False,
                         help='Output EMX file containing updated data', default='bbmri-directory.xlsx')
     parser.add_argument('--sc-url', '-H', dest='sc_url', type=str, required=True,
@@ -458,14 +472,21 @@ if __name__ == "__main__":
     print('loading source')
     with open(args.rd_connect_file) as f:
         rd_connect_data = json.load(f)
+
     if args.missing_disease_file:
         with open(args.missing_disease_file) as f:
             diseases = pd.read_csv(f, sep=';', header=0, index_col=False)
     else:
         diseases = None
 
+    if args.missing_countries_file:
+        with open(args.missing_countries_file) as f:
+            countries = pd.read_csv(f, sep=';', header=0, index_col=False)
+    else:
+        countries = None
+
     rdc_biobanks = sorted(rd_connect_data['allData'], key=lambda b: b['OrganizationID'])
     d_emx = pd.read_excel(args.directory_file, sheet_name=None, engine='openpyxl')
-    importer = RDConnectImporter(d_emx, rdc_biobanks, diseases, args.sc_url, args.sc_user, args.sc_pwd)
+    importer = RDConnectImporter(d_emx, rdc_biobanks, diseases, countries, args.sc_url, args.sc_user, args.sc_pwd)
     res = importer.run()
     write_excel(res, args.output_file)
