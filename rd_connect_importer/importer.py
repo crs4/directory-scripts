@@ -39,6 +39,10 @@ BIOBANKS_MAPPING = {
     87919: {
         'biobank': 'bbmri-eric:ID:UK_GBR-1-198',
         'collection': 'bbmri-eric:ID:UK_GBR-1-198:collection:1'
+    },
+    88051: {
+        'biobank': 'bbmri-eric:ID:MT_DwarnaBio',
+        'collection': 'bbmri-eric:ID:MT_DwarnaBio:collection:all_samples'
     }
 }
 
@@ -130,7 +134,7 @@ DISEASES_SHEET = 'eu_bbmri_eric_disease_types'
 
 class RDConnectImporter:
 
-    def __init__(self, bb_dir_data, rdc_finder_data, sc_url, sc_user, sc_pass):
+    def __init__(self, bb_dir_data, rdc_finder_data, diseases_data, sc_url, sc_user, sc_pass):
         self.eric_data = bb_dir_data
         self.rdc_finder_data = rdc_finder_data
         self.sc_url = sc_url
@@ -138,6 +142,7 @@ class RDConnectImporter:
         self.sc_pass = sc_pass
         self.sc_session = Session(self.sc_url)
         self.sc_session.login(self.sc_user, self.sc_pass)
+        self.diseases_data = diseases_data
         self.missing_diseases = []
 
     def _concat_cell(self, current_cell, new_string):
@@ -252,7 +257,7 @@ class RDConnectImporter:
                 'collaboration_commercial': [None],
                 'collaboration_non_for_profit': [None],
                 'national_node': [None],
-                'withdrawn': [None]
+                'withdrawn': [False]
             }, index=None)
             self.eric_data[BIOBANKS_SHEET] = pd.concat([biobanks_df, new_biobank])
         else:
@@ -310,7 +315,7 @@ class RDConnectImporter:
                 'name': [name], 'acronym': [acronym], 'description': [description], 'url': [None], 'location': [None],
                 'country': [country_code], 'head': [None],
                 'contact': [contact_id],
-                'withdrawn': [None], 'national_node': [None],
+                'withdrawn': [False], 'national_node': [None],
                 'parent_collection': [None], 'sub_collections': [None],
                 'biobank': [biobank_id], 'biobank_label': [biobank_label], 'network': [RD_NETWORK],
                 'combined_network': [combined_network], 'also_known': [f'rdconnect:{rd_biobank_id}'],
@@ -389,24 +394,31 @@ class RDConnectImporter:
         self.eric_data[ALSO_KNOWN_SHEET] = pd.concat([df, new_also_known])
 
     def check_missing_diseases(self, diseases):
-        df = self.eric_data[DISEASES_SHEET]
+        disease_df = self.diseases_data
         for d in diseases:
-            if df[df.id == d].empty:
-                self.missing_diseases.append(d)
+            if self.eric_data[DISEASES_SHEET][self.eric_data[DISEASES_SHEET].id == d].empty:
+                if disease_df is not None and not disease_df[disease_df.id == d].empty:
+                    print(f'Adding disease {d} to excel file')
+                    self.eric_data[DISEASES_SHEET] = pd.concat([self.eric_data[DISEASES_SHEET], disease_df[disease_df.id == d]])
+                else:
+                    print(f'Cannot find disease {d} in the missing disease file')
+                    self.missing_diseases.append(d)
+
+
 
     def run(self):
         for b in self.rdc_finder_data:
             print("Converting biobank: ", b['OrganizationID'])
             print("Getting collection data: ", b['OrganizationID'])
             self.add_collection_info(b)
-            # print("Getting biobank data: ", b['OrganizationID'])
-            # self.add_biobank_info(b)
             print("Getting person data: ", b['OrganizationID'])
             self.add_contact_info(b)
             print("Getting also known data: ", b['OrganizationID'])
             self.add_also_known_in_info(b)
             print()
-        print(sorted(set(self.missing_diseases)))
+        if len(self.missing_diseases) > 0:
+            print("Some disease codes could not be added. Adds the following codes manually")
+            print(sorted(set(self.missing_diseases)))
         return self.eric_data
 
 
@@ -430,6 +442,8 @@ if __name__ == "__main__":
                         help='Input directory emx file with. A copy with new data will be created')
     parser.add_argument('--rd-connect-input-file', '-r', dest='rd_connect_file', type=file_exist, required=True,
                         help='The JSON input file with data of RD Connect\'s biobanks')
+    parser.add_argument('--missing-disease-file', '-d', dest='missing_disease_file', required=False,
+                        help='A csv file that contains the missing disease information')
     parser.add_argument('--output', '-o', dest='output_file', type=str, required=False,
                         help='Output EMX file containing updated data', default='bbmri-directory.xlsx')
     parser.add_argument('--sc-url', '-H', dest='sc_url', type=str, required=True,
@@ -440,15 +454,18 @@ if __name__ == "__main__":
                         help='Samples Catalogue user password')
 
     args = parser.parse_args()
+
     print('loading source')
     with open(args.rd_connect_file) as f:
         rd_connect_data = json.load(f)
-    # rd_connect_data = {'allData': [r for r in rd_connect_data['allData'] if r['OrganizationID'] in (77630, 261780)]}
-    rdc_biobanks = sorted(rd_connect_data['allData'], key=lambda b: b['OrganizationID'])
-    for b in rdc_biobanks:
-        print(b['OrganizationID'], b['name'])
+    if args.missing_disease_file:
+        with open(args.missing_disease_file) as f:
+            diseases = pd.read_csv(f, sep=';', header=0, index_col=False)
+    else:
+        diseases = None
 
+    rdc_biobanks = sorted(rd_connect_data['allData'], key=lambda b: b['OrganizationID'])
     d_emx = pd.read_excel(args.directory_file, sheet_name=None, engine='openpyxl')
-    importer = RDConnectImporter(d_emx, rdc_biobanks, args.sc_url, args.sc_user, args.sc_pwd)
+    importer = RDConnectImporter(d_emx, rdc_biobanks, diseases, args.sc_url, args.sc_user, args.sc_pwd)
     res = importer.run()
     write_excel(res, args.output_file)
