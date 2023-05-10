@@ -1,0 +1,13 @@
+This directory contains scripts to update the current version of the BBMRI directory with data about biobanks in RD Connect.
+
+Requirements:
+  - Last version of the BBMRI Directory's EMX file
+  - Account for the sample catalogue https://samples.rd-connect.eu
+
+The steps to reproduce the update are:
+
+- 1: download the current version of the directory either from the production one or from the acceptance server https://bbmri-acc.gcc.rug.nl
+- 2: download the last version of RD Connect dump from https://github.com/bibbox/dev-molgenis-app-rd-finder/blob/master/rd-data/rdconnectfinder.json
+- 3: run rd_connect_biobank_extact.py to isolate biobanks from the RD Finder and to clean the data
+- 4: run importer.py passing the file downloaded
+- 5: in the newly create file change the attribute "national_node" of "also_known_in" entity to be nillable

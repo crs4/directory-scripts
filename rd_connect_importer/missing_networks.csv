@@ -1,0 +1,2 @@
+id;name;acronym;description;location;latitude;longitude;also_known;url;juridical_person;contact;parent_network;national_node;withdrawn;common_collection_focus;common_charter;common_sops;common_data_access_policy;common_sample_access_policy;common_mta;common_image_access_policy;common_image_mta;common_representation;common_url
+bbmri-eric:networkID:EU_BBMRI-ERIC:networks:RD-Biobanks;RD-Biobanks;RD-BB;Network of Rare Disease Biobanks;;;;;;;bbmri-eric:contactID:EU_BBMRI-ERIC;;EU;FALSE;TRUE;FALSE;FALSE;FALSE;FALSE;FALSE;FALSE;FALSE;FALSE;FALSE
