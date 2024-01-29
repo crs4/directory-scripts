@@ -8,12 +8,41 @@ import argparse
 import json
 import math
 import os
-from bs4 import BeautifulSoup
-
 import pandas as pd
+from bs4 import BeautifulSoup
 from molgenis.client import Session
 
+ITALIAN_BIOBANKS = [45274, 45401, 62316, 76957, 77088, 77219, 77350, 77489, 77630, 77761, 173631, 215190, 261780]
+
 BIOBANKS_MAPPING = {
+    45274: {
+        'biobank': 'bbmri-eric:ID:IT_1383569594559774',
+        'collection': 'bbmri-eric:ID:IT_1383569594559774:collection:1444717432314364'
+    },
+    45401: {
+        'biobank': 'bbmri-eric:ID:IT_1383929642991480',
+        'collection': 'bbmri-eric:ID:IT_1383929642991480:collection:1444717553513748'
+    },
+    62316: {
+        'biobank': 'bbmri-eric:ID:IT_1382965524316631',
+        'collection': 'bbmri-eric:ID:IT_1382965524316631:collection:1444717339490516'
+    },
+    77219: {
+        'biobank': 'bbmri-eric:ID:IT_1383230735994332',
+        'collection': 'bbmri-eric:ID:IT_1383230735994332:collection:1450446268862465'
+    },
+    77350: {
+        'biobank': 'bbmri-eric:ID:IT_1382965524316631',
+        'collection': 'bbmri-eric:ID:IT_1382965524316631:collection:1444717339490516'
+    },
+    77489: {
+        'biobank': 'bbmri-eric:ID:IT_1383047508168267',
+        'collection': 'bbmri-eric:ID:IT_1383047508168267:collection:1444717360015607'
+    },
+    77630: {
+        'biobank': 'bbmri-eric:ID:IT_1385652938842205',
+        # 'collection': 'bbmri-eric:ID:IT_1385652938842205:collection:1444717851150981'
+    },
     173631: {
         'biobank': 'bbmri-eric:ID:IT_1384375808568138',
         'collection': 'bbmri-eric:ID:IT_1384375808568138:collection:794f03ad818541b'
@@ -23,26 +52,8 @@ BIOBANKS_MAPPING = {
         'collection': 'bbmri-eric:ID:IT_1539241927435687:collection:c9346d1b70d14fc'
     },
     261780: {
-        'biobank': 'bbmri-eric:ID:IT_1385652938842205'
-    },
-    45274: {
-        'biobank': 'bbmri-eric:ID:IT_1383569594559774',
-        'collection': 'bbmri-eric:ID:IT_1383569594559774:collection:1444717432314364'
-    },
-    77489: {
-        'biobank': 'bbmri-eric:ID:IT_1383047508168267',
-        'collection': 'bbmri-eric:ID:IT_1383047508168267:collection:1444717360015607'
-    },
-    77630: {
-        'biobank': 'bbmri-eric:ID:IT_1385652938842205'
-    },
-    87919: {
-        'biobank': 'bbmri-eric:ID:UK_GBR-1-198',
-        'collection': 'bbmri-eric:ID:UK_GBR-1-198:collection:1'
-    },
-    88051: {
-        'biobank': 'bbmri-eric:ID:MT_DwarnaBio',
-        'collection': 'bbmri-eric:ID:MT_DwarnaBio:collection:all_samples'
+        'biobank': 'bbmri-eric:ID:IT_1385652938842205',
+        # 'collection': 'bbmri-eric:ID:IT_1385652938842205:collection:1444717851150981'
     }
 }
 
@@ -75,7 +86,8 @@ RD_BIOBANKS = {
         'name of host institution': 'Medical Genetics Unit, Fondazione IRCCS Casa Sollievo della Sofferenza'
     },
     77761: {
-        'name of host institution': 'Parkinson Institute, ASST Gaetano Pini CTO (ex Istituti Clinici di Perfezionamento)'
+        'name of host institution': 'Parkinson Institute, ASST Gaetano Pini CTO (ex Istituti Clinici di Perfezionamento)',
+        'url': 'https://www.parkinson.it/biobanca.html'
     }
 }
 
@@ -95,12 +107,12 @@ COUNTRIES_CODES = {
 NATIONAL_NODES = {
     'Germany': 'DE',
     'Hungary': 'HU',
-    'Israel': '',
+    'Israel': 'EXT',
     'Italy': 'IT',
     'Malta': 'MT',
     'Slovenia': 'SI',
     'Spain': 'ES',
-    'Turkey': '',
+    'Turkey': 'EXT',
     'United Kingdom': 'UK'
 }
 
@@ -123,26 +135,36 @@ MATERIAL_TYPES = {
     'WHOLE BLOOD': 'WHOLE_BLOOD'
 }
 
-RD_NETWORK = 'bbmri-eric:networkID:EU_BBMRI-ERIC:networks:RD-Biobanks'
+RD_NETWORK = 'bbmri-eric:networkID:EXT_RD-Biobanks'
 
 BIOBANKS_SHEET = 'eu_bbmri_eric_biobanks'
+RD_BIOBANKS_SHEET = 'eu_bbmri_eric_biobanks_rd'
 COLLECTIONS_SHEET = 'eu_bbmri_eric_collections'
+RD_COLLECTIONS_SHEET = 'eu_bbmri_eric_collections_rd'
 PERSONS_SHEET = 'eu_bbmri_eric_persons'
+RD_PERSONS_SHEET = 'eu_bbmri_eric_persons_rd'
 ALSO_KNOWN_SHEET = 'eu_bbmri_eric_also_known_in'
+RD_ALSO_KNOWN_SHEET = 'eu_bbmri_eric_also_known_in_rd'
 DISEASES_SHEET = 'eu_bbmri_eric_disease_types'
 COUNTRIES_SHEET = 'eu_bbmri_eric_countries'
 NETWORKS_SHEET = 'eu_bbmri_eric_networks'
 
 MISSING_DISEASES_FILE = 'missing_diseases.csv'
 MISSING_COUNTRIES_FILE = 'missing_countries.csv'
-MISSING_NETWORKS_FILE = 'missing_networks.csv'
+# MISSING_NETWORKS_FILE = 'missing_networks.csv'
 
 
 class RDConnectImporter:
 
     def __init__(self, bb_dir_data, rdc_finder_data, diseases_data, countries_data, networks_data, sc_url, sc_user,
-                 sc_pass):
+                 sc_pass, add_new_sheets=False):
         self.eric_data = bb_dir_data
+        self.add_new_sheets = add_new_sheets
+        if add_new_sheets:
+            self.eric_data[RD_COLLECTIONS_SHEET] = pd.DataFrame(columns=self.eric_data[COLLECTIONS_SHEET].columns)
+            self.eric_data[RD_BIOBANKS_SHEET] = pd.DataFrame(columns=self.eric_data[BIOBANKS_SHEET].columns)
+            self.eric_data[RD_PERSONS_SHEET] = pd.DataFrame(columns=self.eric_data[PERSONS_SHEET].columns)
+            self.eric_data[RD_ALSO_KNOWN_SHEET] = pd.DataFrame(columns=self.eric_data[ALSO_KNOWN_SHEET].columns)
         self.rdc_finder_data = rdc_finder_data
         self.sc_url = sc_url
         self.sc_user = sc_user
@@ -156,13 +178,14 @@ class RDConnectImporter:
 
         self.missing_diseases = []
         self.missing_countries = []
-        self.check_missing_networks([RD_NETWORK])
+        # self.check_missing_networks([RD_NETWORK])
 
-    def _concat_cell(self, current_cell, new_string):
+    def _concat_cell(self, current_cell, new_values):
         if str(current_cell.values[0]) == 'nan':
-            return new_string
+            return ','.join(sorted(new_values))
         else:
-            return f'{current_cell.values[0]},{new_string}'
+            new_set = set(current_cell.values[0].split(',')).union(set(new_values))
+            return ','.join(sorted(new_set))
 
     def get_country_code(self, rd_biobank_id, rd_connect_country):
         if rd_biobank_id == 168562:
@@ -185,25 +208,25 @@ class RDConnectImporter:
     def biobank_exist(self, rd_biobank_id):
         return rd_biobank_id in BIOBANKS_MAPPING
 
-    def get_biobank_id(self, rd_biobank_id, biobank_country):
+    def get_biobank_id(self, rd_biobank_id):
         try:
             return BIOBANKS_MAPPING[rd_biobank_id]['biobank']
         except KeyError:
-            return f'bbmri-eric:ID:RD_{biobank_country}:{rd_biobank_id}'
+            return f'bbmri-eric:ID:EXT_{rd_biobank_id}'
 
-    def get_collection_id(self, rd_biobank_id, biobank_country):
+    def get_collection_id(self, rd_biobank_id):
         try:
             biobank = BIOBANKS_MAPPING[rd_biobank_id]
         except KeyError:
-            return f'{self.get_biobank_id(rd_biobank_id, biobank_country)}:collection:MainCollection'
+            return f'{self.get_biobank_id(rd_biobank_id)}:collection:MainCollection'
         else:
             try:
                 return biobank['collection']
             except KeyError:
-                return f'{self.get_biobank_id(rd_biobank_id, biobank_country)}:collection:{rd_biobank_id}'
+                return f'{self.get_biobank_id(rd_biobank_id)}:collection:{rd_biobank_id}'
 
-    def generate_contact_id(self, rd_biobank_id, biobank_country):
-        return f'bbmri-eric:contactID:RD_{biobank_country}_{rd_biobank_id}'
+    def generate_contact_id(self, rd_biobank_id):
+        return f'bbmri-eric:contactID:EXT_{rd_biobank_id}'
 
     def get_material(self, rd_material):
         try:
@@ -218,8 +241,8 @@ class RDConnectImporter:
             diseases.update(d['orphacode'])
             diseases.update(icd for icd in d['icd10'] if 'icd10cm' not in icd)
             num_donors += int(d['number'])
-
-        diseases.update(self.get_diseases_from_sample_catalogue(rd_data['OrganizationID']))
+        sc_diseases = self.get_diseases_from_sample_catalogue(rd_data['OrganizationID'])
+        diseases.update(sc_diseases)
         return num_donors, diseases
 
     def get_diseases_from_sample_catalogue(self, rd_biobank_id):
@@ -244,7 +267,7 @@ class RDConnectImporter:
         rd_connect_country = rd_data['address']['country']
 
         country_code = self.get_country_code(rd_biobank_id, rd_connect_country)
-        biobank_id = self.get_biobank_id(rd_biobank_id, country_code)
+        biobank_id = self.get_biobank_id(rd_biobank_id)
 
         biobanks_df = self.eric_data[BIOBANKS_SHEET]
         if biobanks_df[biobanks_df.id == biobank_id].empty:  # The biobank is not present in the original data
@@ -259,12 +282,12 @@ class RDConnectImporter:
                 'location': [None],
                 'country': [country_code],
                 'head': [None],
-                'contact': [self.generate_contact_id(rd_biobank_id, country_code)],
+                'contact': [self.generate_contact_id(rd_biobank_id)],
                 'juridical_person': [
                     self.get_field_value(rd_biobank_id, rd_data['address'], 'name of host institution')],
                 'network': [RD_NETWORK],
                 'also_known': [None],
-                'collections': [self.get_collection_id(rd_biobank_id, country_code)],
+                'collections': [self.get_collection_id(rd_biobank_id)],
                 'capabilities': [None],
                 'quality': [None],
                 'collaboration_commercial': [None],
@@ -273,9 +296,14 @@ class RDConnectImporter:
                 'withdrawn': [False]
             }, index=None)
             self.eric_data[BIOBANKS_SHEET] = pd.concat([biobanks_df, new_biobank])
+            if self.add_new_sheets:
+                self.eric_data[RD_BIOBANKS_SHEET] = pd.concat([self.eric_data[RD_BIOBANKS_SHEET], new_biobank])
         else:
             biobanks_df.loc[biobanks_df.id == biobank_id, 'network'] = \
-                self._concat_cell(biobanks_df.loc[biobanks_df.id == biobank_id, 'network'], RD_NETWORK)
+                self._concat_cell(biobanks_df.loc[biobanks_df.id == biobank_id, 'network'], [RD_NETWORK])
+            if self.add_new_sheets:
+                self.eric_data[RD_BIOBANKS_SHEET] = pd.concat(
+                    [self.eric_data[RD_BIOBANKS_SHEET], biobanks_df.loc[biobanks_df.id == biobank_id]])
 
     def add_collection_info(self, rd_data):
         rd_biobank_id = rd_data['OrganizationID']
@@ -283,8 +311,8 @@ class RDConnectImporter:
 
         country_code = self.get_country_code(rd_biobank_id, rd_connect_country)
         self.check_missing_country(country_code)
-        biobank_id = self.get_biobank_id(rd_biobank_id, country_code)
-        collection_id = self.get_collection_id(rd_biobank_id, country_code)
+        biobank_id = self.get_biobank_id(rd_biobank_id)
+        collection_id = self.get_collection_id(rd_biobank_id)
 
         materials = rd_data['bb_core']['Biomaterial_Available'] + rd_data['bb_core']['Additional_Biomaterial_available']
         materials = set(self.get_material(m) for m in materials if self.get_material(m) is not None)
@@ -303,11 +331,12 @@ class RDConnectImporter:
                 name = 'Main Collection'
                 acronym = ''
                 description = ''
-                contact_id = self.generate_contact_id(rd_biobank_id, country_code)
+                contact_id = self.generate_contact_id(rd_biobank_id)
                 biobank_label = self.get_field_value(rd_biobank_id, rd_data, 'name')
                 combined_network = RD_NETWORK
                 #  In this case it also creates the biobank
                 self.add_biobank_info(rd_data)
+                self.add_contact_info(rd_data)
             else:
                 # If the biobank is present, it means this is a new collection of an old biobank
                 # so the collection will be given the name of the finder biobank
@@ -318,11 +347,15 @@ class RDConnectImporter:
                 contact_id = biobanks_df.loc[biobanks_df.id == biobank_id, 'contact'].values[0]
                 biobank_label = biobanks_df.loc[biobanks_df.id == biobank_id, 'name'].values[0]
                 combined_network = self._concat_cell(
-                    biobanks_df.loc[biobanks_df.id == biobank_id, 'network'], RD_NETWORK)
+                    biobanks_df.loc[biobanks_df.id == biobank_id, 'network'], [RD_NETWORK])
 
                 # it appends the collection to the list of collections of the biobank
                 biobanks_df.loc[biobanks_df.id == biobank_id, 'collections'] = \
-                    self._concat_cell(biobanks_df.loc[biobanks_df.id == biobank_id, 'collections'], collection_id)
+                    self._concat_cell(biobanks_df.loc[biobanks_df.id == biobank_id, 'collections'], [collection_id])
+                if self.add_new_sheets:
+                    self.eric_data[RD_BIOBANKS_SHEET] = pd.concat(
+                        [self.eric_data[RD_BIOBANKS_SHEET], biobanks_df.loc[biobanks_df.id == biobank_id]])
+                self.add_contact_info(rd_data)
 
             new_collection = pd.DataFrame({
                 'id': [collection_id],
@@ -350,30 +383,39 @@ class RDConnectImporter:
                 'access_description': [None], 'access_uri': [None], 'sop': [None]
             })
             self.eric_data[COLLECTIONS_SHEET] = pd.concat([collections_df, new_collection])
+            if self.add_new_sheets:
+                self.eric_data[RD_COLLECTIONS_SHEET] = pd.concat([self.eric_data[RD_COLLECTIONS_SHEET], new_collection])
         else:
             # If the collection was already present in the Directory, it updates some fields
             collections_df.loc[collections_df.id == collection_id, ['also_known', 'network', 'combined_network',
                                                                     'diagnosis_available']] = \
                 [self._concat_cell(collections_df.loc[collections_df.id == collection_id, 'also_known'],
-                                   f'rdconnect:{rd_biobank_id}'),
-                 self._concat_cell(collections_df.loc[collections_df.id == collection_id, 'network'], RD_NETWORK),
+                                   [f'rdconnect:{rd_biobank_id}']),
+                 self._concat_cell(collections_df.loc[collections_df.id == collection_id, 'network'], [RD_NETWORK]),
                  self._concat_cell(collections_df.loc[collections_df.id == collection_id, 'combined_network'],
-                                   RD_NETWORK),
+                                   [RD_NETWORK]),
                  self._concat_cell(collections_df.loc[collections_df.id == collection_id, 'diagnosis_available'],
-                                   ','.join(sorted(diseases)))]
+                                   sorted(diseases))]
+
+            if self.add_new_sheets:
+                # Add the rows
+                self.eric_data[RD_COLLECTIONS_SHEET] = pd.concat(
+                    [self.eric_data[RD_COLLECTIONS_SHEET], collections_df.loc[collections_df.id == collection_id]])
+                self.eric_data[RD_BIOBANKS_SHEET] = pd.concat(
+                    [self.eric_data[RD_BIOBANKS_SHEET], biobanks_df.loc[biobanks_df.id == biobank_id]])
 
     def add_contact_info(self, rd_data):
         rd_biobank_id = rd_data['OrganizationID']
         rd_connect_country = rd_data['address']['country']
         country_code = self.get_country_code(rd_biobank_id, rd_connect_country)
-        contact_id = self.generate_contact_id(rd_biobank_id, country_code),
+        contact_id = self.generate_contact_id(rd_biobank_id),
 
         df = self.eric_data[PERSONS_SHEET]
         if df[df.id == contact_id].empty:
-            biobank_id = self.get_biobank_id(rd_biobank_id, country_code)
-            collection_id = self.get_collection_id(rd_biobank_id, country_code)
+            biobank_id = self.get_biobank_id(rd_biobank_id)
+            collection_id = self.get_collection_id(rd_biobank_id)
             new_contact = pd.DataFrame({
-                'id': [self.generate_contact_id(rd_biobank_id, country_code)],
+                'id': [self.generate_contact_id(rd_biobank_id)],
                 'title_before_name': [None],
                 'first_name': [rd_data['main contact']['first name']],
                 'last_name': [rd_data['main contact']['last name']],
@@ -392,6 +434,8 @@ class RDConnectImporter:
                 'withdrawn': [None]
             })
             self.eric_data[PERSONS_SHEET] = pd.concat([df, new_contact])
+            if self.add_new_sheets:
+                self.eric_data[RD_PERSONS_SHEET] = pd.concat([self.eric_data[RD_PERSONS_SHEET], new_contact])
 
     def add_also_known_in_info(self, rd_data):
         rd_biobank_id = rd_data['OrganizationID']
@@ -407,6 +451,8 @@ class RDConnectImporter:
             'withdrawn': [None]
         })
         self.eric_data[ALSO_KNOWN_SHEET] = pd.concat([df, new_also_known])
+        if self.add_new_sheets:
+            self.eric_data[RD_ALSO_KNOWN_SHEET] = pd.concat([self.eric_data[RD_ALSO_KNOWN_SHEET], new_also_known])
 
     def check_missing_diseases(self, diseases):
         disease_df = self.diseases_data
@@ -427,26 +473,26 @@ class RDConnectImporter:
             else:
                 self.missing_countries.append(country)
 
-    def check_missing_networks(self, networks):
-        networks_df = self.networks_data
-        for n in networks:
-            if self.eric_data[NETWORKS_SHEET][self.eric_data[NETWORKS_SHEET].id == n].empty:
-                if networks_df is not None and not networks_df[networks_df.id == n].empty:
-                    self.eric_data[NETWORKS_SHEET] = pd.concat(
-                        [self.eric_data[NETWORKS_SHEET], networks_df[networks_df.id == n]])
+    # def check_missing_networks(self, networks):
+    #     networks_df = self.networks_data
+    #     for n in networks:
+    #         if self.eric_data[NETWORKS_SHEET][self.eric_data[NETWORKS_SHEET].id == n].empty:
+    #             if networks_df is not None and not networks_df[networks_df.id == n].empty:
+    #                 self.eric_data[NETWORKS_SHEET] = pd.concat(
+    #                     [self.eric_data[NETWORKS_SHEET], networks_df[networks_df.id == n]])
 
     def run(self):
         for b in self.rdc_finder_data:
             print("Converting biobank: ", b['OrganizationID'])
             print("Getting collection data: ", b['OrganizationID'])
             self.add_collection_info(b)
-            print("Getting person data: ", b['OrganizationID'])
-            self.add_contact_info(b)
+            # print("Getting person data: ", b['OrganizationID'])
+            # self.add_contact_info(b)
             print("Getting also known data: ", b['OrganizationID'])
             self.add_also_known_in_info(b)
             print()
         if len(self.missing_diseases) > 0:
-            print("Some disease codes could not be added. Adds the following codes manually")
+            print("Some disease codes could not be added. Add the following codes manually")
             print(sorted(set(self.missing_diseases)))
         return self.eric_data
 
@@ -492,12 +538,13 @@ if __name__ == "__main__":
     with open(MISSING_COUNTRIES_FILE) as f:
         countries = pd.read_csv(f, sep=';', header=0, index_col=False)
 
-    with open(MISSING_NETWORKS_FILE) as f:
-        networks = pd.read_csv(f, sep=';', header=0, index_col=False)
-
+    # with open(MISSING_NETWORKS_FILE) as f:
+    #     networks = pd.read_csv(f, sep=';', header=0, index_col=False)
+    networks = []
     rdc_biobanks = sorted(rd_connect_data['allData'], key=lambda b: b['OrganizationID'])
+    rdc_biobanks = filter(lambda b: b['OrganizationID'] in ITALIAN_BIOBANKS, rdc_biobanks)
     d_emx = pd.read_excel(args.directory_file, sheet_name=None, engine='openpyxl')
     importer = RDConnectImporter(d_emx, rdc_biobanks, diseases, countries, networks, args.sc_url, args.sc_user,
-                                 args.sc_pwd)
+                                 args.sc_pwd, True)
     res = importer.run()
     write_excel(res, args.output_file)
