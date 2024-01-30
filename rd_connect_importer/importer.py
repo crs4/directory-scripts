@@ -526,6 +526,7 @@ if __name__ == "__main__":
     parser.add_argument('--sc-password', '-p', dest='sc_pwd', type=str, required=True,
                         help='Samples Catalogue user password')
 
+
     args = parser.parse_args()
 
     print('loading source')
@@ -538,13 +539,11 @@ if __name__ == "__main__":
     with open(MISSING_COUNTRIES_FILE) as f:
         countries = pd.read_csv(f, sep=';', header=0, index_col=False)
 
-    # with open(MISSING_NETWORKS_FILE) as f:
-    #     networks = pd.read_csv(f, sep=';', header=0, index_col=False)
     networks = []
     rdc_biobanks = sorted(rd_connect_data['allData'], key=lambda b: b['OrganizationID'])
     rdc_biobanks = filter(lambda b: b['OrganizationID'] in ITALIAN_BIOBANKS, rdc_biobanks)
     d_emx = pd.read_excel(args.directory_file, sheet_name=None, engine='openpyxl')
     importer = RDConnectImporter(d_emx, rdc_biobanks, diseases, countries, networks, args.sc_url, args.sc_user,
-                                 args.sc_pwd, True)
+                                 args.sc_pwd, add_new_sheets=True)
     res = importer.run()
     write_excel(res, args.output_file)
